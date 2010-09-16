@@ -1,0 +1,73 @@
+<?php
+
+function webform_multiple_limit_form_alter(&$form, $form_state, $form_id) {
+	switch(true) {
+	
+  		case ($form['#id'] == 'webform-component-edit-form'):
+	  		if (isset($form['extra']['multiple'])) {
+				$moptions = array(0 => 'Unlimited', 1 => 1, 2 => 2, 3 => 3, 4 => 4, 5 => 5, 6 => 6, 7 => 7, 8 => 8, 9 => 9, 10 => 10, 20 => 20, 30 => 30, 50 => 50, 100 => 100, 500 => 500, 1000 => 1000);
+				
+				$default = webform_multiple_limit_get_limit($form['nid']['#value'], $form['cid']['#value']);
+							
+				$form['extra']['multiple_limit'] = array(
+				  '#type' => 'select',
+				  '#title' => t('Multiple Options Limit'),
+				  '#default_value' => $default,
+				  '#description' => t('Limit the quantity of selected options.'),
+				  '#options' => $moptions,
+				);
+				$form['#submit'][] = 'webform_multiple_limit_submit';
+  			}
+			break;
+  		
+		case (preg_match("/^webform\-client\-form\-(.*)/", $form['#id'])):
+			$form['#validate'][] = 'webform_multiple_limit_validate';
+			break;
+	}
+}
+
+function webform_multiple_limit_submit($form_id, $form_values) {
+	if (!empty($form_values['values']['extra']['multiple_limit'])) {
+		webform_multiple_limit_set_limit($form_values['values']['nid'], $form_values['values']['cid'], $form_values['values']['extra']['multiple_limit']);
+	}
+}
+
+function webform_multiple_limit_get_limit($nid, $cid) {
+	$SQL = 'SELECT `limit` FROM {webform_multiple_limit} where nid = %d AND cid = %d';
+	$limit = db_result(db_query($SQL, $nid, $cid));
+	if ($limit) {
+		return $limit;
+	} else {
+		return 0;
+	}  
+}
+
+function webform_multiple_limit_set_limit($nid, $cid, $limit) {
+	if (!$cid) {
+		$SQL = 'SELECT MAX(cid) FROM {webform_component} WHERE nid = %d';
+		$cid = db_result(db_query($SQL, $nid));
+		$cid++;
+	}
+	$SQL = 'DELETE FROM {webform_multiple_limit} WHERE nid = %d AND cid = %d';
+	db_query($SQL, $nid, $cid);
+	$SQL = 'INSERT INTO {webform_multiple_limit}(nid, cid, `limit`) values(%d, %d, %d)';
+	db_query($SQL, $nid, $cid, $limit);  
+}
+
+function webform_multiple_limit_validate($form, &$form_state) {
+	foreach($form_state['webform']['component_tree']['children'] as $key => $val) {
+		if (isset($val['extra']['multiple_limit']) && !empty($val['extra']['multiple_limit'])) {
+			$limit = $val['extra']['multiple_limit'];
+			$count = 0;
+			$values = $form_state['values']['submitted'][$val['form_key']];
+			foreach($values as $skey => $sval) {
+				if (!empty($sval)) {
+					$count++;
+				}
+			}
+			if ($count > $limit) {
+				form_set_error($val['form_key'], t('You may not select more than %limit values for %question.', array('%limit' => $limit, '%question' => $val['name'])));  
+			}
+		}
+	}
+}
